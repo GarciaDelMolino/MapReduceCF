@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.mapreduce.count";
+option java_outer_classname = "MapReduceCountProto";
+option objc_class_prefix = "MRC";
+
+package mapreduce;
+
+// The driver service definition.
+service Driver {
+  // Sends a task
+  rpc GetTask (TaskRequest) returns (TaskReply) {}
+}
+
+// The request message containing the worker's status.
+message TaskRequest {
+  string status = 1;
+}
+
+// The response message containing the greetings
+message TaskReply {
+  string task = 1;
+  string input_file = 2;
+  string output_file = 3;
+}
