@@ -21,6 +21,5 @@ message TaskRequest {
 // The response message containing the greetings
 message TaskReply {
   string task = 1;
-  string input_file = 2;
-  string output_file = 3;
+  string metadata = 2;
 }

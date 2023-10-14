@@ -25,10 +25,10 @@ export N_REDUCE=4
 ```
 
 or given as arguments to the server call:
-`python3 server.py --nmap 5 --nreduce 6 --casesensitive`
+`python3 server.py --n_map 5 --n_reduce 6 --case_sensitive`
 
 
-Any number of workers can be started running `python3 client.py` on different terminal sessions. Note that the number of concurrent workers is limited to max(N_map_tasks, N_reduce_tasks), i.e. 6 in the default setting. Any additional worker will be iddle while the others process tasks.
+Any number of workers can be started running `python3 client.py` on different terminal sessions. Note that the number of concurrent workers is limited to N_map_tasks and N_reduce_tasks. Any additional worker will be iddle while the others process tasks.
 
 
 ## How does this program work?
@@ -39,13 +39,26 @@ Any number of workers can be started running `python3 client.py` on different te
 export CONNECTION_TIMEOUT=60
 export CONNECTION_RETRY=1
 ```
- Client will only exit when driver sends a disconnect signal.
+ Client will only exit when driver sends a disconnect (KILL) signal.
  
- The worker (client) will send two kinds of signals to the driver (service): a connection request, and a finished message. The client will send two kinds of response: the task to be completed, or a kill signal. Only uppon reception of a kill signal will the client finish. 
+ The worker (client) will communicate with the driver (service) when it is ready to complete a task. This can happen when the client starts but also when the client has completed the requested task. The server will send a response with information on the task to be completed. The task can be MAP, REDUCE, WAIT or KILL. Only uppon reception of a kill signal will the client exit. 
+ 
+ The server will make workers WAIT for all MAP tasks to finish before sending REDUCE tasks. Only when all REDUCE tasks have finish will the server send KILL instructions. The server will wait for all waiting workers to request a new task (KILL) and will self-shutdown when no more workers are waiting for tasks.
  
 
-## How to edit the communication protocol?
+## Maintenance
 
-Edit `protos/mapreduce.proto` then execute `python -m grpc_tools.protoc -I protos --python_out=. --pyi_out=. --grpc_python_out=. .\protos\mapreduce.proto` to get compiled files `mapreduce_pb2.py` and `mapreduce_pb2_grpc.py`.
+### Things to improve
+
+- We have no way of tracking that the client did not fail/stop unexpectedly
+- For code simplicity, workers might be asked to wait unnecessary after completion of a task.
+
+### How to edit the communication protocol?
+
+gRPC communication structs and methods are defined in a proto file. 
+
+To add params into the communication messages between clients and server, or to add new methods, edit `protos/mapreduce.proto`. To compile the changes, execute `python -m grpc_tools.protoc -I protos --python_out=. --pyi_out=. --grpc_python_out=. .\protos\mapreduce.proto`. This will produce new compiled files `mapreduce_pb2.py` and `mapreduce_pb2_grpc.py`, which are used by our server and client. 
+
+New methods must be implemented in `class Driver(mapreduce_pb2_grpc.DriverServicer)`.
 
  

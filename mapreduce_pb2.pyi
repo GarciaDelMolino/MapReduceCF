@@ -11,11 +11,9 @@ class TaskRequest(_message.Message):
     def __init__(self, status: _Optional[str] = ...) -> None: ...
 
 class TaskReply(_message.Message):
-    __slots__ = ["task", "input_file", "output_file"]
+    __slots__ = ["task", "metadata"]
     TASK_FIELD_NUMBER: _ClassVar[int]
-    INPUT_FILE_FIELD_NUMBER: _ClassVar[int]
-    OUTPUT_FILE_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
     task: str
-    input_file: str
-    output_file: str
-    def __init__(self, task: _Optional[str] = ..., input_file: _Optional[str] = ..., output_file: _Optional[str] = ...) -> None: ...
+    metadata: str
+    def __init__(self, task: _Optional[str] = ..., metadata: _Optional[str] = ...) -> None: ...

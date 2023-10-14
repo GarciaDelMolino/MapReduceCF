@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmapreduce.proto\x12\tmapreduce\"\x1d\n\x0bTaskRequest\x12\x0e\n\x06status\x18\x01 \x01(\t\"B\n\tTaskReply\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x12\n\ninput_file\x18\x02 \x01(\t\x12\x13\n\x0boutput_file\x18\x03 \x01(\t2C\n\x06\x44river\x12\x39\n\x07GetTask\x12\x16.mapreduce.TaskRequest\x1a\x14.mapreduce.TaskReply\"\x00\x42\x36\n\x17io.grpc.mapreduce.countB\x13MapReduceCountProtoP\x01\xa2\x02\x03MRCb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmapreduce.proto\x12\tmapreduce\"\x1d\n\x0bTaskRequest\x12\x0e\n\x06status\x18\x01 \x01(\t\"+\n\tTaskReply\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x10\n\x08metadata\x18\x02 \x01(\t2C\n\x06\x44river\x12\x39\n\x07GetTask\x12\x16.mapreduce.TaskRequest\x1a\x14.mapreduce.TaskReply\"\x00\x42\x36\n\x17io.grpc.mapreduce.countB\x13MapReduceCountProtoP\x01\xa2\x02\x03MRCb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -24,7 +24,7 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_TASKREQUEST']._serialized_start=30
   _globals['_TASKREQUEST']._serialized_end=59
   _globals['_TASKREPLY']._serialized_start=61
-  _globals['_TASKREPLY']._serialized_end=127
-  _globals['_DRIVER']._serialized_start=129
-  _globals['_DRIVER']._serialized_end=196
+  _globals['_TASKREPLY']._serialized_end=104
+  _globals['_DRIVER']._serialized_start=106
+  _globals['_DRIVER']._serialized_end=173
 # @@protoc_insertion_point(module_scope)
