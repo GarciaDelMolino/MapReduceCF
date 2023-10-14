@@ -3,13 +3,23 @@ from time import sleep, time
 import os
 import logging
 import json
+import string
+import re
 
 import grpc
 import mapreduce_pb2
 import mapreduce_pb2_grpc
 
-
 log_fn = print  # logging.info
+
+
+def clean_words(ln):
+    ln = ln.replace('\n', '')
+    for c in string.punctuation:
+        ln = ln.replace(c, '')
+    ln = re.split(r' +', ln)
+    return [w for w in ln if len(w.strip())]
+
 
 def map_file(metadata):
     """
@@ -21,8 +31,19 @@ def map_file(metadata):
     files = metadata['files'].split(',')
     task = metadata['taskID']
     M = metadata['buckets']
+    path = os.path.dirname(files[0])
+
+    def make_output_file(word):
+        return os.path.join(path, 'intermediate', f'mr-{task}-{ord(word[0]) % M}')
+
     log_fn(f"MAP{task}: Extract words from {files} and write into {M} buckets")
-    sleep(10)
+    for file in files:
+        with open(file, 'r') as f_in:
+            for ln in f_in:
+                words = clean_words(ln)
+                for w in words:
+                    with open(make_output_file(w.lower()), 'a') as f_out:
+                        f_out.write(w + '\n')
     return None
 
 
@@ -35,11 +56,28 @@ def reduce(metadata):
     """
 
     files = metadata['files'].split(',')
+    path = os.path.dirname(os.path.dirname(files[0]))
     task = metadata['taskID']
     cased = metadata['case_sensitive']
+    if cased:
+        uncase = lambda x: x
+    else:
+        uncase = lambda x: x.lower()
+
     log_fn(f"REDUCE{task}: Count words from {files} with case sensitive {cased}")
-    sleep(10)
+
+    word_count = {}
+    for file in files:
+        with open(file, 'r') as f_in:
+            for ln in f_in:
+                w = uncase(ln[:-1])
+                word_count[w] = word_count.get(w, 0) + 1
+
+    with open(os.path.join(path, 'out', f'out-{task}'), 'w') as f_out:
+        for k, v in word_count.items():
+            f_out.write(f'{k} {v}\n')
     return None
+
 
 def run():
     """
@@ -66,7 +104,7 @@ def run():
             # there's probably a better way to handle this timeout using grpc kwargs
             log_fn("Waiting for server connection")
             sleep(retry_time)
-            if (time()-t0) > timeout:
+            if (time() - t0) > timeout:
                 logging.warning("Could not establish connection. Exiting.")
                 break
             continue
@@ -85,7 +123,6 @@ def run():
             reduce(metadata)
             task_req = mapreduce_pb2.TaskRequest(status=f'done REDUCE{metadata.get("taskID", -1)}')
         elif response.task == 'WAIT':
-            log_fn("Waiting for a task to be available.")
             sleep(retry_time)
             task_req = mapreduce_pb2.TaskRequest(status='waiting')
     channel.close()

@@ -117,6 +117,22 @@ def split_map_tasks(input_tasks, N):
     output_tasks = [(task_id, ','.join(t)) for task_id, t in enumerate(output_tasks)]
     return output_tasks
 
+
+def process_reduce_files(path, N, M):
+    # clean files in intermediate and out folder if they exist
+    for d in ['intermediate', 'out']:
+        p = os.path.join(path, d)
+        if os.path.exists(p):
+            for f in os.listdir(p):
+                os.remove(os.path.join(p, f))
+        else:
+            os.mkdir(p)
+
+    return [(m, ','.join([os.path.join(path, 'intermediate', f'mr-{n}-{m}')
+                          for n in range(N)]))
+            for m in range(M)]
+
+
 def serve(args):
     """
     The driver defines the tasks before launching the server to receive requests.
@@ -143,8 +159,7 @@ def serve(args):
     status_tracker.update({f'MAP{i}': 'pending' for i in range(args.n_map)})
 
     # reduce tasks
-    reduce_tasks = [(m, ','.join([f'mr-{n}-{m}' for n in range(args.n_map)]))
-                    for m in range(args.n_reduce)]
+    reduce_tasks = process_reduce_files(args.input_folder, args.n_map, args.n_reduce)
     status_tracker.update({f'REDUCE{i}': 'pending' for i in range(args.n_reduce)})
 
     # put into queues

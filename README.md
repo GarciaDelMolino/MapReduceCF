@@ -52,6 +52,7 @@ export CONNECTION_RETRY=1
 
 - We have no way of tracking that the client did not fail/stop unexpectedly
 - For code simplicity, workers might be asked to wait unnecessary after completion of a task.
+- Word-count: how to split grammar abreviations? e.g. "he's" instead of "he is" or "Andrew's", etc
 
 ### How to edit the communication protocol?
 
