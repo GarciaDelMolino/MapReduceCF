@@ -15,7 +15,7 @@ python -m pip install grpcio
 
 ## How to run this repo:
 
-In one terminal, start the driver calling `python3 server.py`. By default, 6 map tasks will be set, for 4 reduce operations. The word count will not be case-sensitive. 
+In one terminal, start the driver calling `python3 server.py --input_folder your_files_folder`. By default, 6 map tasks will be set, for 4 reduce operations. The word count will not be case-sensitive. 
 
 Those parameters can be changed from system settings 
 ```
@@ -25,7 +25,7 @@ export N_REDUCE=4
 ```
 
 or given as arguments to the server call:
-`python3 server.py --n_map 5 --n_reduce 6 --case_sensitive`
+`python3 server.py --input_folder inputs --n_map 5 --n_reduce 6 --case_sensitive`
 
 
 Any number of workers can be started running `python3 client.py` on different terminal sessions. Note that the number of concurrent workers is limited to N_map_tasks and N_reduce_tasks. Any additional worker will be iddle while the others process tasks.
