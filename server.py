@@ -55,7 +55,7 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
         elif msg.startswith('waiting'):
             _ = waiting.get()
 
-        # decide task to perform next (MAP/REDUCE/WAIT/KILL)
+        # decide task to perform next (MAP/REDUCE/WAIT/SHUTDOWN)
         if map_flag:
             # handle MAPs first.
             try:
@@ -84,8 +84,8 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
 
             # check if all workers have completed:
             if pending_reduce.empty():
-                # all job is done. Send kill signal.
-                reply = mapreduce_pb2.TaskReply(task='KILL', metadata='')
+                # all job is done. Send SHUTDOWN signal.
+                reply = mapreduce_pb2.TaskReply(task='SHUTDOWN', metadata='')
                 if waiting.empty():
                     # There are no more workers waiting for instructions. We can close shop in 5 seconds.
                     log_fn("Job is completed and no more workers are waiting. Shutting down the server gracefully...")

@@ -86,9 +86,9 @@ def reduce(metadata):
 def run():
     """
     Client to process tasks as instructed by the driver.
-    The tasks can be MAP, REDUCE, WAIT or KILL
+    The tasks can be MAP, REDUCE, WAIT or SHUTDOWN
     The client will wait for the driver to be online up to a timeout.
-    It will only exit in case of timeout (server is offline) or upon reception of the KILL instruction.
+    It will only exit in case of timeout (server is offline) or upon reception of the SHUTDOWN instruction.
 
     :return: None
     """
@@ -101,7 +101,7 @@ def run():
     stub = mapreduce_pb2_grpc.DriverStub(channel)
     task_req = mapreduce_pb2.TaskRequest(status='new')
     while True:
-        # client waits for a task until KILL signal is received.
+        # client waits for a task until SHUTDOWN signal is received.
         try:
             response = stub.GetTask(task_req)
         except grpc._channel._InactiveRpcError:
@@ -115,7 +115,7 @@ def run():
 
         print(f"Task received: {response.task} {response.metadata}")
         # do stuff according to task
-        if response.task == 'KILL':
+        if response.task == 'SHUTDOWN':
             log_fn("Nothing to be done. Exiting.")
             break
         elif response.task == 'MAP':
