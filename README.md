@@ -30,6 +30,8 @@ or given as arguments to the server call:
 
 Any number of workers can be started running `python3 client.py` on different terminal sessions. Note that the number of concurrent workers is limited to N_map_tasks and N_reduce_tasks. Any additional worker will be iddle while the others process tasks.
 
+The program is able to handle any number of N_map_tasks and N_reduce_tasks, even in cases larger than the text file population or alphabetic letters.
+
 
 ## How does this program work?
 
@@ -62,4 +64,9 @@ To add params into the communication messages between clients and server, or to 
 
 New methods must be implemented in `class Driver(mapreduce_pb2_grpc.DriverServicer)`.
 
+### Testing
+
+You can define unitest cases using script `create_unitest_files.py`.  The script will generate `n_files` in folder `input_path`, containing all words in `word_count`.
+
+The client is able to handle cases in which there are less files than map tasks, as well as cases in which there are less first letters than reduce tasks.
  

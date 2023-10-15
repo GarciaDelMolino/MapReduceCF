@@ -38,6 +38,8 @@ def map_file(metadata):
 
     log_fn(f"MAP{task}: Extract words from {files} and write into {M} buckets")
     for file in files:
+        if not os.path.exists(file):
+            continue
         with open(file, 'r') as f_in:
             for ln in f_in:
                 words = clean_words(ln)
@@ -68,6 +70,8 @@ def reduce(metadata):
 
     word_count = {}
     for file in files:
+        if not os.path.exists(file):
+            continue
         with open(file, 'r') as f_in:
             for ln in f_in:
                 w = uncase(ln[:-1])
