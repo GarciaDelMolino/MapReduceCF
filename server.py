@@ -27,7 +27,7 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
     def GetTask(self, request, context):
         """
         Uses global queues to handle what task to send to the workers.
-        :param request:
+        :param request: message from client
         :param context:
         :return:
         """
@@ -111,6 +111,13 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
 
 
 def split_map_tasks(input_tasks, N):
+    """
+    Takes all input files and groups them in n_map groups
+
+    :param input_tasks: list of input files
+    :param N: number of map tasks
+    :return: map tasks
+    """
     output_tasks = [[] for _ in range(N)]
     for i, f in enumerate(input_tasks):
         output_tasks[(i % N)].append(f)
@@ -119,6 +126,14 @@ def split_map_tasks(input_tasks, N):
 
 
 def process_reduce_files(path, N, M):
+    """
+    Define intermediate files for the reduce operation
+
+    :param path: files input path
+    :param N: number of map tasks
+    :param M: number of reduce tasks
+    :return: a list containing the intermediate files to read for each reduce task.
+    """
     # clean files in intermediate and out folder if they exist
     for d in ['intermediate', 'out']:
         p = os.path.join(path, d)
