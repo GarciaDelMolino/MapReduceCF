@@ -2,6 +2,7 @@ from concurrent import futures
 import logging
 import argparse
 import os
+import fnmatch
 import json
 import queue
 import threading
@@ -17,6 +18,7 @@ q_reduce_tasks = queue.Queue()
 pending_maps = queue.Queue()
 pending_reduce = queue.Queue()
 waiting = queue.Queue()
+final_task = None
 map_flag = True
 reduce_flag = False
 
@@ -39,6 +41,7 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
         global waiting
         global map_flag
         global reduce_flag
+        global final_task
 
         # handle worker's notification (new/done MAP*/done REDUCE*)
         msg = request.status
@@ -81,15 +84,18 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
                 reply = mapreduce_pb2.TaskReply(task='WAIT', metadata='')
                 waiting.put(1)
         else:
-
             # check if all workers have completed:
             if pending_reduce.empty():
                 # all job is done. Send SHUTDOWN signal.
-                reply = mapreduce_pb2.TaskReply(task='SHUTDOWN', metadata='')
                 if waiting.empty():
-                    # There are no more workers waiting for instructions. We can close shop in 5 seconds.
+                    # There are no more workers waiting for instructions.
+                    # Let's send "WRAP-UP" signal to the last worker.
+                    reply = mapreduce_pb2.TaskReply(task='WRAP-UP', metadata=final_task)
+                    # We can close shop in about 5 seconds.
                     log_fn("Job is completed and no more workers are waiting. Shutting down the server gracefully...")
                     threading.Timer(1, self.delayed_shutdown).start()
+                else:
+                    reply = mapreduce_pb2.TaskReply(task='SHUTDOWN', metadata='')
             elif pending_maps.empty():
                 # all maps are done. Set reduce flag signal if there are reduce tasks to start.
                 reduce_flag = not q_reduce_tasks.empty()
@@ -108,6 +114,27 @@ class Driver(mapreduce_pb2_grpc.DriverServicer):
         if waiting.empty():
             print("Job completed. Shutting down.")
             server.stop(0)
+
+    def wrap_up_job(self):
+
+        return
+
+
+def find_directories_with_extension(root_dir, target_extensions):
+    matching_directories = []
+
+    # Walk through the directory tree using os.scandir
+    for entry in os.scandir(root_dir):
+        if entry.is_dir(follow_symlinks=False):
+            # Check if any file in the current directory has the target extension
+            if any(fnmatch.fnmatch(file.name, f"*{ext}") for ext in target_extensions for file in os.scandir(entry.path) if
+                   file.is_file()):
+                matching_directories.append(entry.path)
+
+            # Recursive call to process subdirectories
+            matching_directories.extend(find_directories_with_extension(entry.path, target_extensions))
+
+    return matching_directories
 
 
 def split_map_tasks(input_tasks, N):
@@ -161,32 +188,42 @@ def serve(args):
     global status_tracker
     global q_map_tasks
     global q_reduce_tasks
+    global final_task
     global pending_maps
     global pending_reduce
 
-    # get txt files to count
-    files = [os.path.join(args.input_folder, f)
-             for f in os.listdir(args.input_folder)
-             if f.endswith('.txt')]
+    # find paths with relevant extensions
+    target_extension = [ext.strip() for ext in args.extension.split(',')]
+    directories = find_directories_with_extension(args.input_folder, target_extension)
+    # save search meta in disk
+    directory_ids = {k: v for k, v in enumerate(directories)}
+    directory_ids_path = os.path.join(args.input_folder, 'directory_ids_mapper.json')
+    with open(directory_ids_path, 'w') as f:
+        json.dump(directory_ids, f)
 
     # split map tasks
-    map_tasks = split_map_tasks(files, args.n_map)
-    status_tracker.update({f'MAP{i}': 'pending' for i in range(args.n_map)})
+    n_map = args.n_map or len(directories)
+    map_tasks = split_map_tasks(directories, n_map)
+    status_tracker.update({f'MAP{i}': 'pending' for i in range(n_map)})
 
     # reduce tasks
-    reduce_tasks = process_reduce_files(args.input_folder, args.n_map, args.n_reduce)
+    reduce_tasks = process_reduce_files(args.input_folder, n_map, args.n_reduce)
     status_tracker.update({f'REDUCE{i}': 'pending' for i in range(args.n_reduce)})
 
     # put into queues
     for t in map_tasks:
-        meta = json.dumps({'files': t[1], 'taskID': t[0], 'buckets': args.n_reduce})
+        meta = json.dumps({'directory': t[1], 'taskID': t[0],
+                           'buckets': args.n_reduce, 'extension': args.extension,
+                           'directory_ids': directory_ids_path})
         q_map_tasks.put((t[0], meta))
         pending_maps.put(1)
 
     for t in reduce_tasks:
-        meta = json.dumps({'files': t[1], 'taskID': t[0], 'case_sensitive': args.case_sensitive})
+        meta = json.dumps({'directory': t[1], 'taskID': t[0], 'directory_ids': directory_ids_path})
         q_reduce_tasks.put((t[0], meta))
         pending_reduce.put(1)
+
+    final_task = json.dumps({'buckets': args.n_reduce, 'directory_ids': directory_ids_path})
 
     # launch server
     global server
@@ -202,15 +239,14 @@ def serve(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Parser for Map-Reduce Settings')
-    parser.add_argument("--input_folder", type=str, help='Directory containing files to inspect',
-                        default="inputs")
-    parser.add_argument("--n_map", type=int, help="Number of MAP tasks",
+    parser.add_argument("--input_folder", type=str, help='Directory containing subfolders to inspect',
+                        default="C:\\Users\\Ana\\Pictures")
+    parser.add_argument("--n_map", type=int, help="Number of MAP tasks. Set to 0 to launch as many map tasks as folders to inspect.",
                         default=os.environ.get("N_MAP", 6))
     parser.add_argument("--n_reduce", type=int, help="Number of REDUCE operations",
                         default=os.environ.get("N_REDUCE", 4))
-    parser.add_argument("--case_sensitive", action="store_true",
-                        help="Word occurrence count is case sensitive",
-                        default=bool(os.environ.get("CASE_SENSITIVE", False)))
+    parser.add_argument("--extension", type=str, help='Relevant file extensions to inspect',
+                        default="jpg,png,jpeg,raw")
     args = parser.parse_args()
 
     logging.basicConfig()

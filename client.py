@@ -5,10 +5,13 @@ import logging
 import json
 import string
 import re
+from pathlib import Path
+import pickle
 
 import grpc
 import mapreduce_pb2
 import mapreduce_pb2_grpc
+import numpy as np
 
 log_fn = print  # logging.info
 
@@ -21,35 +24,39 @@ def clean_words(ln):
     return [w for w in ln if len(w.strip())]
 
 
-def map_file(metadata):
+def map_op(metadata):
     """
-    Reads words in file and writes into the relevant bucket.
+    Scans files in directory and writes into the relevant bucket.
 
-    :param metadata: dct containing files to read, task ID and number of buckets.
+    :param metadata: dct containing folders to read, task ID and number of buckets.
     :return: None
     """
-    files = metadata['files'].split(',')
+    folders = metadata['directory'].split(',')
     task = metadata['taskID']
     M = metadata['buckets']
-    path = os.path.dirname(files[0])
+    target_extensions = [ext.strip() for ext in metadata['extension'].split(',')]
+    with open(metadata['directory_ids'], 'r') as f:
+        folder_tracker = json.load(f)
+    folder_tracker = {folder: int(i) for i, folder in folder_tracker.items()}
+    path = os.path.dirname(metadata['directory_ids'])
 
-    def make_output_file(word):
-        return os.path.join(path, 'intermediate', f'mr-{task}-{ord(word[0]) % M}')
+    def make_output_file(filename):
+        return os.path.join(path, 'intermediate', f'mr-{task}-{ord(filename[-1]) % M}')
 
-    log_fn(f"MAP{task}: Extract words from {files} and write into {M} buckets")
-    for file in files:
-        if not os.path.exists(file):
+    log_fn(f"MAP{task}: Scan files in {folders} and write into {M} buckets")
+    for folder in folders:
+        if not os.path.exists(folder):
             continue
-        with open(file, 'r') as f_in:
-            for ln in f_in:
-                words = clean_words(ln)
-                for w in words:
-                    with open(make_output_file(w.lower()), 'a') as f_out:
-                        f_out.write(w + '\n')
+        folder_id = folder_tracker[folder]
+        for ext in target_extensions:
+            for ln in Path(folder).glob(f"*{ext}"):
+                filename = ln.stem
+                with open(make_output_file(filename.lower()), 'a') as f_out:
+                    f_out.write(f'{folder_id}\t{filename}\n')
     return None
 
 
-def reduce(metadata):
+def reduce_op(metadata):
     """
     Reads words from buckets and writes count in output file.
 
@@ -57,31 +64,70 @@ def reduce(metadata):
     :return: None
     """
 
-    files = metadata['files'].split(',')
-    path = os.path.dirname(os.path.dirname(files[0]))
+    files = metadata['directory'].split(',')
+    with open(metadata['directory_ids'], 'r') as f:
+        folder_tracker = json.load(f)
+    path = os.path.dirname(metadata['directory_ids'])
     task = metadata['taskID']
-    cased = metadata['case_sensitive']
-    if cased:
-        uncase = lambda x: x
-    else:
-        uncase = lambda x: x.lower()
 
-    log_fn(f"REDUCE{task}: Count words from {files} with case sensitive {cased}")
+    log_fn(f"REDUCE{task}: Count repetitions from {files}")
 
-    word_count = {}
+    repetitions = {}
     for file in files:
         if not os.path.exists(file):
             continue
         with open(file, 'r') as f_in:
             for ln in f_in:
-                w = uncase(ln[:-1])
-                word_count[w] = word_count.get(w, 0) + 1
+                folder_id, filename = ln[:-1].split('\t')
+                repetitions[filename] = repetitions.get(filename, []) + [int(folder_id)]
 
+    repetitions = {k: v for k, v in repetitions.items() if len(v) > 1}
+    # write repeated files sorted by number of repetitions:
     with open(os.path.join(path, 'out', f'out-{task}'), 'w') as f_out:
-        for k, v in word_count.items():
-            f_out.write(f'{k} {v}\n')
+        for k, v in sorted(repetitions.items(), key=lambda item: len(item[1])):
+            f_out.write(f'{k}: {v}\n')
+
+    # find most overlapped folders:
+    repetition_matrix = [[0 for _ in range(len(folder_tracker))]  for _ in range(len(folder_tracker))]
+    for v in repetitions.values():
+        for i, vi in enumerate(v):
+            for vj in v[(i+1):]:
+                repetition_matrix[vi][vj] += 1
+                repetition_matrix[vj][vi] += 1
+    with open(os.path.join(path, 'out', f'repetition_matrix-{task}.pkl'), 'wb') as f_out:
+        pickle.dump(np.array(repetition_matrix), f_out)
+
     return None
 
+
+def final_op(metadata):
+    M = metadata['buckets']
+    with open(metadata['directory_ids'], 'r') as f:
+        folder_tracker = json.load(f)
+    folder_tracker = {int(k): v for k, v in folder_tracker.items()}
+    path = os.path.dirname(metadata['directory_ids'])
+
+    repetition_matrix = np.zeros((len(folder_tracker), len(folder_tracker)))
+    for task in range(M):
+        with open(os.path.join(path, 'out', f'repetition_matrix-{task}.pkl'), 'rb') as f:
+            repetition_matrix += pickle.load(f)
+    max_rep = np.max(repetition_matrix, axis=0)
+    total_rep = np.sum(repetition_matrix, axis=0)
+    total_similar_folders = np.sum(repetition_matrix > 0, axis=0)
+    ranked_similar_folders = np.argsort(repetition_matrix, axis=1)[:, ::-1]
+
+    with open(os.path.join(path, 'repeated_paths_report.txt'), 'w') as f_out:
+        f_out.write('directory\trepetitions\tmax repeated files\ttotal repeated files\tranked overlapped folders\n')
+        for i in np.argsort(total_similar_folders)[::-1]:
+            ts = total_similar_folders[i]
+            if not ts:
+                # contents in folder are not repeated
+                break
+            dir_name = folder_tracker[i]
+            mr, tr, rsf = max_rep[i], total_rep[i], ranked_similar_folders[i]
+            similar_folders = [f'{folder_tracker[sf]}: {repetition_matrix[sf,i]}' for sf in rsf if repetition_matrix[sf,i] > 0]
+            f_out.write(f'{dir_name}\t{ts}\t{mr}\t{tr}\t{"; ".join(similar_folders)}\n')
+    return None
 
 def run():
     """
@@ -120,15 +166,21 @@ def run():
             break
         elif response.task == 'MAP':
             metadata = json.loads(response.metadata)
-            map_file(metadata)
+            map_op(metadata)
             task_req = mapreduce_pb2.TaskRequest(status=f'done MAP{metadata.get("taskID", -1)}')
         elif response.task == 'REDUCE':
             metadata = json.loads(response.metadata)
-            reduce(metadata)
+            reduce_op(metadata)
             task_req = mapreduce_pb2.TaskRequest(status=f'done REDUCE{metadata.get("taskID", -1)}')
         elif response.task == 'WAIT':
             sleep(retry_time)
             task_req = mapreduce_pb2.TaskRequest(status='waiting')
+        elif response.task == 'WRAP-UP':
+            metadata = json.loads(response.metadata)
+            final_op(metadata)
+            log_fn("Task completed and wrapped up. Exiting.")
+            break
+
     channel.close()
 
 
